@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>겔러그 - 추억의 우주 슈팅</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#dfe3f2;--fg:#141638;--btn:#ffffff;--bd:#141638;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a0b1f;--fg:#cfeeff;--btn:#16183d;--bd:#5ef0ff}}
+:root[data-theme="dark"]{--bg:#0a0b1f;--fg:#cfeeff;--btn:#16183d;--bd:#5ef0ff}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font-family:"Press Start 2P",ui-monospace,monospace;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:12px;box-sizing:border-box;touch-action:manipulation}
+canvas{height:min(72vh,calc(92vw*1.5));aspect-ratio:2/3;background:#05061a;border:3px solid var(--bd);border-radius:6px;image-rendering:pixelated;display:block}
+.pad{display:flex;gap:12px;width:min(92vw,380px)}
+.pad button{flex:1;height:56px;font:inherit;font-size:18px;background:var(--btn);color:var(--fg);border:2px solid var(--bd);border-radius:8px;touch-action:none;user-select:none;-webkit-user-select:none}
+.pad button:active,.pad button:focus-visible{outline:3px solid #ffd23f}
+.hint{font-size:9px;line-height:1.8;text-align:center;margin:0}
+</style>
+</head>
+<body>
+<canvas id="g" tabindex="0" aria-label="겔러그 게임 화면"></canvas>
+<div class="pad">
+<button id="bl" aria-label="왼쪽">◀</button>
+<button id="bf" aria-label="발사">발사</button>
+<button id="br" aria-label="오른쪽">▶</button>
+<button id="bm" aria-label="소리 켜기/끄기">🔊</button>
+</div>
+<p class="hint">방향키/A,D 이동 · 자동 발사, 버튼은 연사 · 시작은 Enter · M 음소거</p>
+<script>
+const c=document.getElementById('g'),x=c.getContext('2d'),W=360,H=540;c.width=W;c.height=H;
+const SP={
+ship:["...##...","...##...","#.####.#","########","########","##.##.##"],
+bee:["..#..#..","...##...","..####..",".##..##.","########","#.####.#","#..##..#"],
+fly:["#......#","##.##.##","########",".######.","..#..#..","..#..#.."],
+boss:["..####..",".######.","##.##.##","########",".#.##.#.","#..##..#"]};
+const COL={ship:"#e8f6ff",bee:"#ffd23f",fly:"#ff4d6d",boss:"#5ef0ff"};
+const PTS={bee:[50,100],fly:[80,160],boss:[150,400]};
+const TYPES=["boss","fly","fly","bee","bee"];
+let keys={},state="title",score=0,hi=0,lives=3,stage=1,t=0,player,bullets,ebul,en,parts,stars,wait=0,flash=0;
+try{hi=+localStorage.getItem("galagaHi")||0}catch(e){}
+stars=Array.from({length:60},()=>({x:Math.random()*W,y:Math.random()*H,s:.4+Math.random()*1.6}));
+function spr(k,px,py,sc=3,col){const r=SP[k];x.fillStyle=col||COL[k];const w=r[0].length*sc,h=r.length*sc;
+ for(let j=0;j<r.length;j++)for(let i=0;i<r[j].length;i++)if(r[j][i]=="#")x.fillRect(Math.round(px-w/2+i*sc),Math.round(py-h/2+j*sc),sc,sc)}
+function build(){en=[];let d=0;for(let r=0;r<5;r++)for(let cI=0;cI<8;cI++){const k=TYPES[r];
+ en.push({k,hx:48+cI*38,hy:56+r*32,x:cI%2?-20:W+20,y:-30,st:2,d:d++*4,dir:1,sx:0})}}
+function reset(){score=0;lives=3;stage=1;bullets=[];ebul=[];parts=[];player={x:W/2,y:H-40,inv:0};build()}
+function boom(px,py,col){for(let i=0;i<14;i++){const a=Math.random()*6.28,s=.8+Math.random()*2.4;parts.push({x:px,y:py,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:24,col})}}
+function shoot(){if(bullets.length<(keys.f?4:2)&&player){bullets.push({x:player.x,y:player.y-16});sfx.shoot()}}
+function update(){t++;stars.forEach(s=>{s.y+=s.s;if(s.y>H){s.y=0;s.x=Math.random()*W}});
+ if(state!=="play")return;
+ const sway=Math.sin(t/50)*18;
+ if(player){if(keys.l)player.x-=3.4;if(keys.r)player.x+=3.4;player.x=Math.max(14,Math.min(W-14,player.x));if(player.inv>0)player.inv--}
+ bullets.forEach(b=>b.y-=7);bullets=bullets.filter(b=>b.y>-10);
+ ebul.forEach(b=>{b.x+=b.vx;b.y+=b.vy});ebul=ebul.filter(b=>b.y<H+10&&b.x>-10&&b.x<W+10);
+ const divers=en.filter(e=>e.st==1).length,maxDive=Math.min(1+Math.floor(stage/2),5);
+ if(t%Math.max(50-stage*4,18)==0&&divers<maxDive){const f=en.filter(e=>e.st==0);if(f.length){const e=f[Math.random()*f.length|0];e.st=1;e.sx=e.x;e.dir=Math.random()<.5?-1:1;e.y0=e.y}}
+ for(const e of en){
+  if(e.st==0){e.x=e.hx+sway;e.y=e.hy+Math.sin(t/30+e.hx)*2}
+  else if(e.st==1){e.y+=2.2+stage*.12;const tr=player?(player.x-e.sx)*.004:0;e.sx+=tr*e.y*.1;e.x=e.sx+Math.sin((e.y-e.y0)/32)*55*e.dir;
+   if(Math.random()<.007+stage*.0015&&e.y<H-150&&player)ebul.push({x:e.x,y:e.y+10,vx:(player.x-e.x)/110,vy:3});
+   if(e.y>H+20){e.y=-20;e.st=2;e.d=0}}
+  else if(e.st==2){if(e.d>0){e.d--;continue}const tx=e.hx+sway,dx=tx-e.x,dy=e.hy-e.y;const dist=Math.hypot(dx,dy);
+   if(dist<4){e.st=0}else{e.x+=dx/dist*4;e.y+=dy/dist*4}}
+ }
+ for(const b of bullets)for(const e of en){if(e.dead||e.st==2&&e.d>0)continue;if(Math.abs(b.x-e.x)<12&&Math.abs(b.y-e.y)<11){e.dead=1;b.y=-99;
+  score+=PTS[e.k][e.st==1?1:0];boom(e.x,e.y,COL[e.k]);sfx.hit();if(score>hi){hi=score;try{localStorage.setItem("galagaHi",hi)}catch(er){}}}}
+ en=en.filter(e=>!e.dead);
+ if(player&&player.inv==0){
+  const hit=ebul.some(b=>Math.abs(b.x-player.x)<10&&Math.abs(b.y-player.y)<10)||en.some(e=>e.st!==2&&Math.abs(e.x-player.x)<16&&Math.abs(e.y-player.y)<14);
+  if(hit){sfx.die();boom(player.x,player.y,"#fff");boom(player.x,player.y,"#5ef0ff");ebul=[];lives--;
+   if(lives<=0){player=null;state="over";wait=90;sfx.over()}else player.inv=140}}
+ parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.l--});parts=parts.filter(p=>p.l>0);
+ if(!en.length&&state=="play"){stage++;flash=100;ebul=[];build();sfx.stage()}}
+function txt(s,px,py,sz,col,al="center"){x.font=sz+'px "Press Start 2P",monospace';x.textAlign=al;x.fillStyle=col;x.fillText(s,px,py)}
+function draw(){x.fillStyle="#05061a";x.fillRect(0,0,W,H);
+ stars.forEach(s=>{x.fillStyle=s.s>1.2?"#fff":"#6a78c8";x.fillRect(s.x,s.y,s.s>1.2?2:1,s.s>1.2?2:1)});
+ if(state!=="title"){
+  en.forEach(e=>{if(e.st==2&&e.d>0)return;spr(e.k,e.x,e.y,3,(Math.floor(t/20)%2&&e.st==0&&e.k=="boss")?"#9ff7ff":null)});
+  x.fillStyle="#ffd23f";bullets.forEach(b=>x.fillRect(b.x-1.5,b.y-7,3,12));
+  x.fillStyle="#ff9ec0";ebul.forEach(b=>{x.fillRect(b.x-2,b.y-2,4,4)});
+  if(player&&!(player.inv>0&&Math.floor(t/5)%2))spr("ship",player.x,player.y,3);
+  parts.forEach(p=>{x.fillStyle=p.col;x.globalAlpha=p.l/24;x.fillRect(p.x,p.y,3,3)});x.globalAlpha=1;
+  txt("1UP",12,20,10,"#ff4d6d","left");txt(String(score).padStart(6,"0"),12,36,10,"#fff","left");
+  txt("HIGH",W/2,20,10,"#ff4d6d");txt(String(hi).padStart(6,"0"),W/2,36,10,"#fff");
+  for(let i=0;i<lives-1;i++)spr("ship",W-24-i*28,28,2);
+  txt("STAGE "+stage,W-12,H-8,8,"#5ef0ff","right");
+  if(flash>0){flash--;if(Math.floor(flash/10)%2==0)txt("STAGE "+stage,W/2,H/2,16,"#ffd23f")}}
+ if(state=="title"){txt("GALAGA",W/2,170,32,"#5ef0ff");txt("ARCADE REMIX",W/2,200,10,"#ff4d6d");
+  spr("boss",W/2-70,260,4);spr("fly",W/2,260,4);spr("bee",W/2+70,260,4);
+  if(Math.floor(t/30)%2)txt("PRESS ENTER / TAP",W/2,360,11,"#ffd23f");txt("HIGH "+hi,W/2,400,9,"#fff")}
+ if(state=="over"){txt("GAME OVER",W/2,H/2-10,22,"#ff4d6d");txt("SCORE "+score,W/2,H/2+30,11,"#fff");
+  if(wait<=0&&Math.floor(t/30)%2)txt("PRESS ENTER / TAP",W/2,H/2+70,10,"#ffd23f")}}
+let last=0,acc=0;function loop(n){acc+=Math.min(n-last||0,100);last=n;while(acc>=20){update();if(wait>0)wait--;acc-=20}draw();requestAnimationFrame(loop)}
+let AC,mute=false,bgmI=0;
+function ac(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state=="suspended")AC.resume();return AC}
+function tone(f,d,ty="square",v=.08,f2,at=0){if(mute||!ac())return;const o=AC.createOscillator(),g=AC.createGain(),s=AC.currentTime+at;o.type=ty;o.frequency.setValueAtTime(f,s);if(f2)o.frequency.exponentialRampToValueAtTime(f2,s+d);g.gain.setValueAtTime(v,s);g.gain.exponentialRampToValueAtTime(.0001,s+d);o.connect(g);g.connect(AC.destination);o.start(s);o.stop(s+d+.02)}
+function noise(d,v=.15){if(mute||!ac())return;const n=AC.sampleRate*d|0,b=AC.createBuffer(1,n,AC.sampleRate),a=b.getChannelData(0);for(let i=0;i<n;i++)a[i]=(Math.random()*2-1)*(1-i/n);const s=AC.createBufferSource(),g=AC.createGain();g.gain.value=v;s.buffer=b;s.connect(g);g.connect(AC.destination);s.start()}
+const sfx={shoot:()=>tone(900,.09,"square",.05,200),hit:()=>{noise(.25,.12);tone(300,.2,"sawtooth",.05,50)},die:()=>{noise(.7,.2);tone(400,.6,"sawtooth",.08,40)},stage:()=>[523,659,784,1047].forEach((f,i)=>tone(f,.15,"square",.06,0,i*.12)),over:()=>[392,330,262,196].forEach((f,i)=>tone(f,.3,"triangle",.1,0,i*.25))};
+const LEAD=[659,0,0,659,0,784,0,880,0,784,0,659,0,587,659,0, 698,0,0,698,0,880,0,1047,0,880,0,698,0,659,698,0, 784,0,0,784,0,1047,0,1175,0,1047,0,784,0,659,784,0, 587,0,659,0,784,0,988,0,784,0,659,0,587,0,494,0];
+const ROOT=[110,87.3,130.8,98];
+function bgm(){if(state!=="play"||mute||!AC)return;const i=bgmI++%64,l=LEAD[i],r=ROOT[i>>4];
+ if(l)tone(l,.09,"square",.03);
+ if(i%2==0)tone(i%4==2?r*2:r,.11,"triangle",.1);
+ if(i%4==0)tone(160,.12,"sine",.2,40);
+ if(i%8==4)noise(.09,.07);
+ if(i%2==1)noise(.025,.025)}
+setInterval(bgm,107);
+function start(){if(state=="title"||(state=="over"&&wait<=0)){ac();reset();state="play";flash=100;sfx.stage()}}
+addEventListener("keydown",e=>{if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," "].includes(e.key))e.preventDefault();
+ if(e.key=="ArrowLeft"||e.key=="a")keys.l=1;if(e.key=="ArrowRight"||e.key=="d")keys.r=1;
+ if(e.key==" "){if(state=="play")shoot();else start()}if(e.key=="Enter")start();if(e.key=="m")tm()});
+addEventListener("keyup",e=>{if(e.key=="ArrowLeft"||e.key=="a")keys.l=0;if(e.key=="ArrowRight"||e.key=="d")keys.r=0});
+function hold(id,k){const b=document.getElementById(id);b.addEventListener("pointerdown",e=>{e.preventDefault();keys[k]=1});
+ ["pointerup","pointerleave","pointercancel"].forEach(ev=>b.addEventListener(ev,()=>keys[k]=0))}
+hold("bl","l");hold("br","r");hold("bf","f");
+document.getElementById("bf").addEventListener("pointerdown",()=>{if(state=="play")shoot();else start()});
+function tm(){mute=!mute;document.getElementById("bm").textContent=mute?"🔇":"🔊";ac()}
+document.getElementById("bm").addEventListener("click",tm);
+c.addEventListener("pointerdown",()=>{if(state!=="play")start()});
+let af=0;setInterval(()=>{if(state=="play"&&(keys.f||++af%2==0))shoot()},110);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
